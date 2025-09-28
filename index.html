@@ -24,19 +24,15 @@
       color: #ffd700;
       text-shadow: 0 2px 8px #000a;
     }
-    .coin-img {
-      display: flex;
-      gap: 24px;
-      justify-content: center;
-      margin: 32px 0;
-    }
-    .coin-img img {
-      width: 180px;
-      height: 180px;
+    #coin-3d {
+      width: 360px;
+      height: 360px;
+      margin: 32px auto;
+      display: block;
+      background: #111;
       border-radius: 50%;
-      box-shadow: 0 2px 16px #000a;
+      box-shadow: 0 2px 32px #000a;
       border: 2px solid #ffd70044;
-      background: #222;
     }
     ul {
       line-height: 1.7;
@@ -52,11 +48,8 @@
 <body>
   <div class="container">
     <h1>Digital Challenge Coin App</h1>
-    <p>Photorealistic, interactive 3D challenge coin built with Python, OpenGL, and Pygame.</p>
-    <div class="coin-img">
-      <img src="digitalchallengecoin4front.png" alt="Coin Front">
-      <img src="digitalchallengecoin4back.png" alt="Coin Back">
-    </div>
+    <p>Photorealistic, interactive 3D challenge coin built with HTML, JavaScript, and Three.js.</p>
+    <canvas id="coin-3d"></canvas>
     <h2>Features</h2>
     <ul>
       <li>Realistic metallic and holographic effects</li>
@@ -64,18 +57,181 @@
       <li>Touch/trackpad gesture controls (coming soon)</li>
       <li>Optimized for smooth performance</li>
     </ul>
-    <h2>How to Run</h2>
-    <pre>python src/main.py</pre>
-    <h2>Requirements</h2>
+    <h2>How to Use</h2>
     <ul>
-      <li>Python 3.12+</li>
-      <li>pygame</li>
-      <li>PyOpenGL</li>
-      <li>Pillow</li>
+      <li>Click and drag to rotate the coin 360°</li>
+      <li>Double-click or double-tap to flip the coin</li>
+      <li>Works on desktop and mobile browsers</li>
     </ul>
     <div class="footer">
       &copy; 2025 DigitalCoinApp. MIT License.
     </div>
   </div>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.155.0/build/three.min.js"></script>
+  <script>
+    // --- 3D Coin Viewer with Three.js ---
+  // Try your images, fallback to a public PNG for debugging
+  const frontTextureUrl = 'digitalchallengecoin4front.png';
+  const backTextureUrl = 'digitalchallengecoin4back.png';
+  const testTextureUrl = 'https://upload.wikimedia.org/wikipedia/commons/4/47/PNG_transparency_demonstration_1.png';
+    const canvas = document.getElementById('coin-3d');
+    const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
+    renderer.setClearColor(0x111111, 1);
+    renderer.setSize(canvas.width, canvas.height, false);
+    const scene = new THREE.Scene();
+    // Camera
+    const camera = new THREE.PerspectiveCamera(35, 1, 0.1, 100);
+    camera.position.set(0, 0, 7);
+    // Lighting
+  // Simple ambient and directional lighting
+  // Studio-style lighting for even illumination
+  // Use only ambient light for background (not needed for MeshBasicMaterial, but keeps background color)
+  const ambient = new THREE.AmbientLight(0xffffff, 1.0);
+  scene.add(ambient);
+    // Load textures
+    const loader = new THREE.TextureLoader();
+    function buildCoin(front, back) {
+      // Coin geometry: cylinder with 2mm thickness look
+      const radius = 1.8, thickness = 0.2; // 2mm thickness
+      const coinGeo = new THREE.CylinderGeometry(radius, radius, thickness, 128);
+      // Materials
+      const frontMat = new THREE.MeshBasicMaterial({ map: front });
+      const backMat = new THREE.MeshBasicMaterial({ map: back });
+      // Load gold gradient texture for edge
+      const edgeTexture = loader.load('gold_metallic_gradient_map.png');
+      edgeTexture.wrapS = THREE.ClampToEdgeWrapping;
+      edgeTexture.wrapT = THREE.ClampToEdgeWrapping;
+      edgeTexture.repeat.set(1, 1); // No repeat
+      // Map vertically, no rotation
+      // Load an environment map for realistic reflections
+      const envMapLoader = new THREE.CubeTextureLoader();
+      const envMap = envMapLoader.load([
+        'https://threejs.org/examples/textures/cube/Bridge2/posx.jpg',
+        'https://threejs.org/examples/textures/cube/Bridge2/negx.jpg',
+        'https://threejs.org/examples/textures/cube/Bridge2/posy.jpg',
+        'https://threejs.org/examples/textures/cube/Bridge2/negy.jpg',
+        'https://threejs.org/examples/textures/cube/Bridge2/posz.jpg',
+        'https://threejs.org/examples/textures/cube/Bridge2/negz.jpg',
+      ]);
+      // Use MeshPhysicalMaterial for dynamic gloss and shine
+      const edgeMat = new THREE.MeshPhysicalMaterial({
+        map: edgeTexture,
+        envMap: envMap,
+        metalness: 1,
+        roughness: 0.08,
+        clearcoat: 1,
+        clearcoatRoughness: 0.01,
+        reflectivity: 1,
+        envMapIntensity: 2.0,
+        sheen: 1,
+        sheenColor: new THREE.Color(0xffffff)
+      });
+      // Cylinder materials: [side, top, bottom]
+      const materials = [edgeMat, frontMat, backMat];
+      const coin = new THREE.Mesh(coinGeo, materials);
+      scene.add(coin);
+
+  // Animation state
+  let isDragging = false, lastX = 0, lastY = 0;
+  // Set initial rotation so front face is visible
+  let rotY = Math.PI / 2; // Rotate 90 degrees ccw
+  let rotX = Math.PI / 2; // Face the camera toward the front
+  let flipping = false;
+      // Touch/Mouse controls
+      function onPointerDown(e) {
+        isDragging = true;
+        lastX = e.touches ? e.touches[0].clientX : e.clientX;
+        lastY = e.touches ? e.touches[0].clientY : e.clientY;
+      }
+      function onPointerMove(e) {
+        if (!isDragging) return;
+        const x = e.touches ? e.touches[0].clientX : e.clientX;
+        const y = e.touches ? e.touches[0].clientY : e.clientY;
+        rotY += (x - lastX) * 0.01;
+        rotX += (y - lastY) * 0.01;
+        rotX = Math.max(-Math.PI/2, Math.min(Math.PI/2, rotX));
+        lastX = x; lastY = y;
+      }
+      function onPointerUp() { isDragging = false; }
+      // Flip on double click/tap
+      let lastTap = 0;
+      function onDoubleTap() {
+        if (flipping) return;
+        flipping = true;
+        const start = rotY;
+        const end = rotY + Math.PI;
+        let t = 0;
+        function animateFlip() {
+          t += 0.08;
+          rotY = start + (end - start) * Math.min(1, t);
+          if (t < 1) requestAnimationFrame(animateFlip);
+          else { flipping = false; }
+        }
+        animateFlip();
+      }
+      canvas.addEventListener('mousedown', onPointerDown);
+      canvas.addEventListener('mousemove', onPointerMove);
+      canvas.addEventListener('mouseup', onPointerUp);
+      canvas.addEventListener('mouseleave', onPointerUp);
+      canvas.addEventListener('touchstart', onPointerDown);
+      canvas.addEventListener('touchmove', onPointerMove);
+      canvas.addEventListener('touchend', onPointerUp);
+      canvas.addEventListener('dblclick', onDoubleTap);
+      canvas.addEventListener('touchend', function(e) {
+        const now = Date.now();
+        if (now - lastTap < 400) onDoubleTap();
+        lastTap = now;
+      });
+      // Responsive
+      function resize() {
+        const size = Math.min(window.innerWidth, 420);
+        canvas.width = size;
+        canvas.height = size;
+        renderer.setSize(size, size, false);
+        camera.aspect = 1;
+        camera.updateProjectionMatrix();
+      }
+      window.addEventListener('resize', resize);
+      resize();
+      // Animate
+      let autoRotate = true;
+      function animate() {
+        if (autoRotate) {
+          rotY += 0.01; // Yaw
+          rotX += 0.007; // Pitch for 3D effect
+          if (rotY > Math.PI * 2) rotY -= Math.PI * 2;
+          if (rotX > Math.PI * 2) rotX -= Math.PI * 2;
+        }
+        coin.rotation.y = rotY;
+        coin.rotation.x = rotX;
+        // Animate gloss/shine based on rotation for realism
+        const edgeMaterial = coin.material[0];
+        edgeMaterial.reflectivity = 0.7 + 0.3 * Math.abs(Math.sin(rotY));
+        edgeMaterial.envMapIntensity = 1.2 + 1.2 * Math.abs(Math.cos(rotY));
+        renderer.render(scene, camera);
+        requestAnimationFrame(animate);
+      }
+      animate();
+    }
+
+    // Try loading your textures, fallback to test image if error
+    loader.load(frontTextureUrl, function(front) {
+      loader.load(backTextureUrl, function(back) {
+        buildCoin(front, back);
+      }, function(){}, function(){
+        // Back failed, use test image
+        loader.load(testTextureUrl, function(testBack) {
+          buildCoin(front, testBack);
+        });
+      });
+    }, function(){}, function(){
+      // Front failed, use test image for both
+      loader.load(testTextureUrl, function(testFront) {
+        loader.load(testTextureUrl, function(testBack) {
+          buildCoin(testFront, testBack);
+        });
+      });
+    });
+  </script>
 </body>
 </html>
